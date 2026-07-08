@@ -350,17 +350,39 @@
   (clear-hints!)
   (set-status! "crates.hx: cleared"))
 
+;; ─── auto-refresh config ─────────────────────────────────────────────────────
+
+;; Whether to re-run the crate check when a Cargo.toml is saved. Default on.
+(define *refresh-on-save* (box #t))
+
 ;;@doc
-;; Register a hook so crates-show-hints runs automatically on document open.
+;; Enable or disable automatically refreshing crate hints when a Cargo.toml is
+;; saved (pass #t or #f). Enabled by default. Refresh on open is unaffected.
+(define (set-crates-refresh-on-save! enabled)
+  (set-box! *refresh-on-save* enabled))
+
+;; Refresh hints for a Cargo.toml doc-id (shared by the auto hooks).
+(define (refresh-hints-for! doc-id)
+  (when (is-cargo-toml? doc-id)
+    (define rope (editor->text doc-id))
+    (when rope
+      (define deps (parse-cargo-deps rope))
+      (unless (null? deps)
+        (clear-hints!)
+        (fetch-and-apply! doc-id deps)))))
+
+;;@doc
+;; Register hooks so crate hints refresh automatically: on document open, and
+;; on save unless disabled via (set-crates-refresh-on-save! #f).
 (define (enable-crates-auto!)
   (register-hook 'document-opened
+    (lambda (doc-id) (refresh-hints-for! doc-id)))
+  (register-hook 'document-saved
     (lambda (doc-id)
-      (when (is-cargo-toml? doc-id)
-        (define rope (editor->text doc-id))
-        (when rope
-          (define deps (parse-cargo-deps rope))
-          (unless (null? deps)
-            (clear-hints!)
-            (fetch-and-apply! doc-id deps)))))))
+      (when (unbox *refresh-on-save*)
+        (refresh-hints-for! doc-id)))))
 
-(provide crates-show-hints crates-clear-hints enable-crates-auto!)
+(provide crates-show-hints
+         crates-clear-hints
+         enable-crates-auto!
+         set-crates-refresh-on-save!)
