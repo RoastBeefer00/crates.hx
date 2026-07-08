@@ -252,7 +252,7 @@
           (define id (add-inlay-hint hint-pos text))
           (when id (set! *hint-id* id))))
       results)
-    (helix.set-status! "crates.hx: done")))
+    (set-status! "crates.hx: done")))
 
 ;; Kick off a parallel fetch for doc-id/deps and apply hints when done.
 (define (fetch-and-apply! doc-id deps)
@@ -268,21 +268,21 @@
 (define (crates-show-hints)
   (define doc-id (current-doc-id))
   (unless (is-cargo-toml? doc-id)
-    (helix.set-status! "crates.hx: not a Cargo.toml")
+    (set-status! "crates.hx: not a Cargo.toml")
     (return! (void)))
 
   (define rope (editor->text doc-id))
   (unless rope
-    (helix.set-status! "crates.hx: could not read buffer")
+    (set-status! "crates.hx: could not read buffer")
     (return! (void)))
 
   (define deps (parse-cargo-deps rope))
   (when (null? deps)
-    (helix.set-status! "crates.hx: no crates.io dependencies found")
+    (set-status! "crates.hx: no crates.io dependencies found")
     (return! (void)))
 
   (clear-hints!)
-  (helix.set-status!
+  (set-status!
     (string-append "crates.hx: fetching " (number->string (length deps)) " versions..."))
   (fetch-and-apply! doc-id deps))
 
@@ -290,7 +290,7 @@
 ;; Remove crates.hx version hints from the current buffer.
 (define (crates-clear-hints)
   (clear-hints!)
-  (helix.set-status! "crates.hx: cleared"))
+  (set-status! "crates.hx: cleared"))
 
 ;;@doc
 ;; Register a hook so crates-show-hints runs automatically on document open.
