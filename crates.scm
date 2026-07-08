@@ -269,17 +269,17 @@
   (define doc-id (current-doc-id))
   (unless (is-cargo-toml? doc-id)
     (helix.set-status! "crates.hx: not a Cargo.toml")
-    (return!))
+    (return! (void)))
 
   (define rope (editor->text doc-id))
   (unless rope
     (helix.set-status! "crates.hx: could not read buffer")
-    (return!))
+    (return! (void)))
 
   (define deps (parse-cargo-deps rope))
   (when (null? deps)
     (helix.set-status! "crates.hx: no crates.io dependencies found")
-    (return!))
+    (return! (void)))
 
   (clear-hints!)
   (helix.set-status!
