@@ -280,4 +280,47 @@
   (clear-hints!)
   (helix.set-status! "crates.hx: cleared"))
 
-(provide crates-show-hints crates-clear-hints)
+;;@doc
+;; Register a hook so crates-show-hints runs automatically on document open.
+(define (enable-crates-auto!)
+  (register-hook 'document-opened
+    (lambda (doc-id)
+      (when (is-cargo-toml? doc-id)
+        (define rope (editor->text doc-id))
+        (when rope
+          (define deps (parse-cargo-deps rope))
+          (unless (null? deps)
+            (clear-hints!)
+            (spawn-native-thread
+              (lambda ()
+                (define results
+                  (map (lambda (dep)
+                         (list (car dep) (cadr dep) (caddr dep)
+                               (fetch-latest-version (car dep))))
+                       deps))
+                (hx.with-context
+                  (lambda ()
+                    (define r (editor->text doc-id))
+                    (when r
+                      (define n-lines (rope-len-lines r))
+                      (for-each
+                        (lambda (res)
+                          (define req    (cadr  res))
+                          (define line   (caddr res))
+                          (define latest (cadddr res))
+                          (when latest
+                            (define hint-pos
+                              (if (< (+ line 1) n-lines)
+                                  (- (rope-line->char r (+ line 1)) 1)
+                                  (rope-line->char r line)))
+                            (define status (version-status req latest))
+                            (define text
+                              (cond
+                                [(eq? status 'ok)       (string-append " ✓ " latest)]
+                                [(eq? status 'outdated) (string-append " ⚠ " latest " available")]
+                                [else                   (string-append " ? " latest)]))
+                            (define id (add-inlay-hint hint-pos text))
+                            (when id (set! *hint-id* id))))
+                        results))))))))))))
+
+(provide crates-show-hints crates-clear-hints enable-crates-auto!)
