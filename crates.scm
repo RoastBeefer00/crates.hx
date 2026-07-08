@@ -267,7 +267,12 @@
                   [(eq? status 'ok)       (string-append " ✓ " latest)]
                   [(eq? status 'outdated) (string-append " ⚠ " latest " available")]
                   [else                   (string-append " ? " latest)]))
-              (define id (add-inlay-hint hint-pos text))
+              (define kind
+                (cond
+                  [(eq? status 'ok)       "type"]
+                  [(eq? status 'outdated) "parameter"]
+                  [else                   "other"]))
+              (define id (add-typed-inlay-hint hint-pos text kind))
               (when id (set! *hint-ids* (cons id *hint-ids*))))))
         (sort results (lambda (a b) (< (caddr a) (caddr b)))))
       (set-status! (string-append "crates.hx: done ("
