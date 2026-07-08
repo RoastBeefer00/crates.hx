@@ -15,6 +15,9 @@ Set TypingSpeed 80ms
 Type "hx Cargo.toml"
 Enter
 Sleep 2s
+Type ":showkeys-toggle"
+Enter
+Sleep 200ms
 
 # Wait for crates.io fetches to finish (background thread, ~5-8s on a typical connection)
 Sleep 4s
