@@ -5,6 +5,11 @@
 (require "helix/ext.scm")
 (require-builtin helix/core/text)
 (require-builtin steel/process)
+;; add-typed-inlay-hint lives in the helix/core/misc builtin module (registered
+;; alongside add-inlay-hint). Access it directly; misc.scm only re-exports the
+;; untyped add-inlay-hint, and (eval 'add-typed-inlay-hint) can't see it because
+;; eval runs in the global environment, not this module's scope.
+(require-builtin helix/core/misc as hxm.)
 
 ;; ─── doc helpers ─────────────────────────────────────────────────────────────
 
@@ -77,15 +82,29 @@
     (when n (set! parts (cons n parts))))
   (reverse parts))
 
-;; Returns 'ok if major versions match (req is compatible with latest),
-;; 'outdated if a new major is available, 'unknown otherwise.
+;; Compare two semver component lists (major minor patch ...). Missing trailing
+;; components count as 0, so (1 2) == (1 2 0). Returns -1, 0, or 1.
+(define (semver-compare a b)
+  (let loop ([a a] [b b])
+    (define x (if (null? a) 0 (car a)))
+    (define y (if (null? b) 0 (car b)))
+    (cond
+      [(and (null? a) (null? b)) 0]
+      [(< x y) -1]
+      [(> x y) 1]
+      [else (loop (if (null? a) '() (cdr a))
+                  (if (null? b) '() (cdr b)))])))
+
+;; Returns 'ok if the required version is already the latest (or newer),
+;; 'outdated if the latest is ahead by any component (major/minor/patch),
+;; 'unknown if either version can't be parsed.
 (define (version-status req-str latest-str)
   (define req (parse-semver (strip-version-prefix req-str)))
   (define lat (parse-semver latest-str))
   (cond
     [(or (null? req) (null? lat)) 'unknown]
-    [(= (car req) (car lat)) 'ok]
-    [else 'outdated]))
+    [(< (semver-compare req lat) 0) 'outdated]
+    [else 'ok]))
 
 ;; ─── Cargo.toml parsing ──────────────────────────────────────────────────────
 
@@ -202,15 +221,12 @@
 ;; All active hint ids: list of (first-line last-line) pairs
 (define *hint-ids* '())
 
-;; Resolve add-typed-inlay-hint at load time via eval so older helix builds
-;; (which lack the binding) don't get a compile-time FreeIdentifier error.
-(define *typed-hint-fn*
-  (with-handler (lambda (_) #f) (eval 'add-typed-inlay-hint)))
-
+;; Add an inlay hint whose theme scope is chosen by `kind`:
+;;   "type"      -> ui.virtual.inlay-hint.type       (green ✓)
+;;   "parameter" -> ui.virtual.inlay-hint.parameter  (orange ⚠)
+;;   other       -> ui.virtual.inlay-hint
 (define (add-hint! pos text kind)
-  (if *typed-hint-fn*
-      (*typed-hint-fn* pos text kind)
-      (add-inlay-hint pos text)))
+  (hxm.add-typed-inlay-hint pos text kind))
 
 ;; ─── core ────────────────────────────────────────────────────────────────────
 
