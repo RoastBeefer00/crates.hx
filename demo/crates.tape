@@ -17,7 +17,7 @@ Enter
 Sleep 2s
 
 # Wait for crates.io fetches to finish (background thread, ~5-8s on a typical connection)
-Sleep 8s
+Sleep 4s
 
 # Hints are now visible inline — scroll through to show them all
 Type "gg"
@@ -33,7 +33,7 @@ Sleep 1s
 # Re-fetch on demand
 Type ":crates-show-hints"
 Enter
-Sleep 8s
+Sleep 4s
 
 Type ":q!"
 Enter

@@ -216,6 +216,51 @@
          (and (>= p (string-length s))
               (string=? (substring path (- p (string-length s)) p) s)))))
 
+;; Fetch all deps in parallel (one thread per crate) and return results.
+;; Each result is (name version-req line-num latest-version-or-#f).
+(define (fetch-all-parallel deps)
+  (define threads
+    (map (lambda (dep)
+           (spawn-native-thread
+             (lambda ()
+               (list (car dep) (cadr dep) (caddr dep)
+                     (fetch-latest-version (car dep))))))
+         deps))
+  (map thread-join! threads))
+
+;; Apply fetched results as inlay hints on doc-id (called on main thread).
+(define (apply-hints! doc-id results)
+  (define r (editor->text doc-id))
+  (when r
+    (define n-lines (rope-len-lines r))
+    (for-each
+      (lambda (res)
+        (define req    (cadr  res))
+        (define line   (caddr res))
+        (define latest (cadddr res))
+        (when latest
+          (define hint-pos
+            (if (< (+ line 1) n-lines)
+                (- (rope-line->char r (+ line 1)) 1)
+                (rope-line->char r line)))
+          (define status (version-status req latest))
+          (define text
+            (cond
+              [(eq? status 'ok)       (string-append " ✓ " latest)]
+              [(eq? status 'outdated) (string-append " ⚠ " latest " available")]
+              [else                   (string-append " ? " latest)]))
+          (define id (add-inlay-hint hint-pos text))
+          (when id (set! *hint-id* id))))
+      results)
+    (helix.set-status! "crates.hx: done")))
+
+;; Kick off a parallel fetch for doc-id/deps and apply hints when done.
+(define (fetch-and-apply! doc-id deps)
+  (spawn-native-thread
+    (lambda ()
+      (define results (fetch-all-parallel deps))
+      (hx.with-context (lambda () (apply-hints! doc-id results))))))
+
 ;; ─── public commands ─────────────────────────────────────────────────────────
 
 ;;@doc
@@ -239,40 +284,7 @@
   (clear-hints!)
   (helix.set-status!
     (string-append "crates.hx: fetching " (number->string (length deps)) " versions..."))
-
-  (spawn-native-thread
-    (lambda ()
-      (define results
-        (map (lambda (dep)
-               (list (car dep) (cadr dep) (caddr dep)
-                     (fetch-latest-version (car dep))))
-             deps))
-      (hx.with-context
-        (lambda ()
-          (define r (editor->text doc-id))
-          (when r
-            (define n-lines (rope-len-lines r))
-            (for-each
-              (lambda (res)
-                (define name    (car   res))
-                (define req     (cadr  res))
-                (define line    (caddr res))
-                (define latest  (cadddr res))
-                (when latest
-                  (define hint-pos
-                    (if (< (+ line 1) n-lines)
-                        (- (rope-line->char r (+ line 1)) 1)
-                        (rope-line->char r line)))
-                  (define status (version-status req latest))
-                  (define text
-                    (cond
-                      [(eq? status 'ok)       (string-append " ✓ " latest)]
-                      [(eq? status 'outdated) (string-append " ⚠ " latest " available")]
-                      [else                   (string-append " ? " latest)]))
-                  (define id (add-inlay-hint hint-pos text))
-                  (when id (set! *hint-id* id))))
-              results)
-            (helix.set-status! "crates.hx: done")))))))
+  (fetch-and-apply! doc-id deps))
 
 ;;@doc
 ;; Remove crates.hx version hints from the current buffer.
@@ -291,36 +303,6 @@
           (define deps (parse-cargo-deps rope))
           (unless (null? deps)
             (clear-hints!)
-            (spawn-native-thread
-              (lambda ()
-                (define results
-                  (map (lambda (dep)
-                         (list (car dep) (cadr dep) (caddr dep)
-                               (fetch-latest-version (car dep))))
-                       deps))
-                (hx.with-context
-                  (lambda ()
-                    (define r (editor->text doc-id))
-                    (when r
-                      (define n-lines (rope-len-lines r))
-                      (for-each
-                        (lambda (res)
-                          (define req    (cadr  res))
-                          (define line   (caddr res))
-                          (define latest (cadddr res))
-                          (when latest
-                            (define hint-pos
-                              (if (< (+ line 1) n-lines)
-                                  (- (rope-line->char r (+ line 1)) 1)
-                                  (rope-line->char r line)))
-                            (define status (version-status req latest))
-                            (define text
-                              (cond
-                                [(eq? status 'ok)       (string-append " ✓ " latest)]
-                                [(eq? status 'outdated) (string-append " ⚠ " latest " available")]
-                                [else                   (string-append " ? " latest)]))
-                            (define id (add-inlay-hint hint-pos text))
-                            (when id (set! *hint-id* id))))
-                        results))))))))))))
+            (fetch-and-apply! doc-id deps))))))
 
 (provide crates-show-hints crates-clear-hints enable-crates-auto!)
