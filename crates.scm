@@ -202,6 +202,16 @@
 ;; All active hint ids: list of (first-line last-line) pairs
 (define *hint-ids* '())
 
+;; Resolve add-typed-inlay-hint at load time via eval so older helix builds
+;; (which lack the binding) don't get a compile-time FreeIdentifier error.
+(define *typed-hint-fn*
+  (with-handler (lambda (_) #f) (eval 'add-typed-inlay-hint)))
+
+(define (add-hint! pos text kind)
+  (if *typed-hint-fn*
+      (*typed-hint-fn* pos text kind)
+      (add-inlay-hint pos text)))
+
 ;; ─── core ────────────────────────────────────────────────────────────────────
 
 (define (clear-hints!)
@@ -272,7 +282,7 @@
                   [(eq? status 'ok)       "type"]
                   [(eq? status 'outdated) "parameter"]
                   [else                   "other"]))
-              (define id (add-typed-inlay-hint hint-pos text kind))
+              (define id (add-hint! hint-pos text kind))
               (when id (set! *hint-ids* (cons id *hint-ids*))))))
         (sort results (lambda (a b) (< (caddr a) (caddr b)))))
       (set-status! (string-append "crates.hx: done ("
