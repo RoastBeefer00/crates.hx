@@ -221,12 +221,11 @@
 ;; All active hint ids: list of (first-line last-line) pairs
 (define *hint-ids* '())
 
-;; Add an inlay hint whose theme scope is chosen by `kind`:
-;;   "type"      -> ui.virtual.inlay-hint.type       (green ✓)
-;;   "parameter" -> ui.virtual.inlay-hint.parameter  (orange ⚠)
-;;   other       -> ui.virtual.inlay-hint
-(define (add-hint! pos text kind)
-  (hxm.add-typed-inlay-hint pos text kind))
+;; Add an inlay hint styled by an explicit theme scope. Using universal scopes
+;; (diff.plus, diagnostic.warning, ...) means the colors work on any theme out
+;; of the box — no custom ui.virtual.inlay-hint.* scopes required.
+(define (add-hint! pos text scope)
+  (hxm.add-scoped-inlay-hint pos text scope))
 
 ;; ─── core ────────────────────────────────────────────────────────────────────
 
@@ -293,12 +292,17 @@
                   [(eq? status 'ok)       (string-append " ✓ " latest)]
                   [(eq? status 'outdated) (string-append " ⚠ " latest " available")]
                   [else                   (string-append " ? " latest)]))
-              (define kind
+              ;; Universal theme scopes (fg-colored and defined by nearly every
+              ;; theme): diff.plus = green for up-to-date, diff.minus = red for
+              ;; behind, muted inlay-hint for unknown. Orange isn't a reliable
+              ;; cross-theme fg scope (diagnostic.warning is usually an underline
+              ;; and plain "warning" is missing in e.g. catppuccin).
+              (define scope
                 (cond
-                  [(eq? status 'ok)       "type"]
-                  [(eq? status 'outdated) "parameter"]
-                  [else                   "other"]))
-              (define id (add-hint! hint-pos text kind))
+                  [(eq? status 'ok)       "diff.plus"]
+                  [(eq? status 'outdated) "diff.minus"]
+                  [else                   "ui.virtual.inlay-hint"]))
+              (define id (add-hint! hint-pos text scope))
               (when id (set! *hint-ids* (cons id *hint-ids*))))))
         (sort results (lambda (a b) (< (caddr a) (caddr b)))))
       (set-status! (string-append "crates.hx: done ("
