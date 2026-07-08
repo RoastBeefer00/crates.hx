@@ -303,6 +303,6 @@
           (define deps (parse-cargo-deps rope))
           (unless (null? deps)
             (clear-hints!)
-            (fetch-and-apply! doc-id deps))))))
+            (fetch-and-apply! doc-id deps)))))))
 
 (provide crates-show-hints crates-clear-hints enable-crates-auto!)
