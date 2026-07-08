@@ -199,15 +199,18 @@
 
 ;; ─── state ───────────────────────────────────────────────────────────────────
 
-;; Last stored hint-id: #f or (list first-line last-line)
-(define *hint-id* #f)
+;; All active hint ids: list of (first-line last-line) pairs
+(define *hint-ids* '())
 
 ;; ─── core ────────────────────────────────────────────────────────────────────
 
 (define (clear-hints!)
-  (when *hint-id*
-    (remove-inlay-hint-by-id (car *hint-id*) (cadr *hint-id*))
-    (set! *hint-id* #f)))
+  (for-each
+    (lambda (id)
+      (with-handler (lambda (_) #f)
+        (remove-inlay-hint-by-id (car id) (cadr id))))
+    *hint-ids*)
+  (set! *hint-ids* '()))
 
 (define (is-cargo-toml? doc-id)
   (define path (editor-document->path doc-id))
@@ -231,29 +234,34 @@
 
 ;; Apply fetched results as inlay hints on doc-id (called on main thread).
 (define (apply-hints! doc-id results)
-  (define r (editor->text doc-id))
-  (when r
-    (define n-lines (rope-len-lines r))
-    (for-each
-      (lambda (res)
-        (define req    (cadr  res))
-        (define line   (caddr res))
-        (define latest (cadddr res))
-        (when latest
-          (define hint-pos
-            (if (< (+ line 1) n-lines)
-                (- (rope-line->char r (+ line 1)) 1)
-                (rope-line->char r line)))
-          (define status (version-status req latest))
-          (define text
-            (cond
-              [(eq? status 'ok)       (string-append " ✓ " latest)]
-              [(eq? status 'outdated) (string-append " ⚠ " latest " available")]
-              [else                   (string-append " ? " latest)]))
-          (define id (add-inlay-hint hint-pos text))
-          (when id (set! *hint-id* id))))
-      results)
-    (set-status! "crates.hx: done")))
+  (with-handler
+    (lambda (err)
+      (set-status! (string-append "crates.hx error: " (to-string err))))
+    (define r (editor->text doc-id))
+    (when r
+      (define n-lines (rope-len-lines r))
+      (for-each
+        (lambda (res)
+          (with-handler
+            (lambda (_) #f)
+            (define req    (cadr  res))
+            (define line   (caddr res))
+            (define latest (cadddr res))
+            (when (and latest (< line n-lines))
+              (define hint-pos
+                (if (< (+ line 1) n-lines)
+                    (- (rope-line->char r (+ line 1)) 1)
+                    (rope-line->char r line)))
+              (define status (version-status req latest))
+              (define text
+                (cond
+                  [(eq? status 'ok)       (string-append " ✓ " latest)]
+                  [(eq? status 'outdated) (string-append " ⚠ " latest " available")]
+                  [else                   (string-append " ? " latest)]))
+              (define id (add-inlay-hint hint-pos text))
+              (when id (set! *hint-ids* (cons id *hint-ids*))))))
+        results)
+      (set-status! "crates.hx: done"))))
 
 ;; Kick off a parallel fetch for doc-id/deps and apply hints when done.
 (define (fetch-and-apply! doc-id deps)
