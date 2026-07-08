@@ -240,10 +240,12 @@
     (define r (editor->text doc-id))
     (when r
       (define n-lines (rope-len-lines r))
+      (define n-fetched (length (filter (lambda (r) (cadddr r)) results)))
       (for-each
         (lambda (res)
           (with-handler
-            (lambda (_) #f)
+            (lambda (err)
+              (set-status! (string-append "crates.hx hint-err: " (to-string err))))
             (define req    (cadr  res))
             (define line   (caddr res))
             (define latest (cadddr res))
@@ -261,7 +263,10 @@
               (define id (add-inlay-hint hint-pos text))
               (when id (set! *hint-ids* (cons id *hint-ids*))))))
         results)
-      (set-status! "crates.hx: done"))))
+      (set-status! (string-append "crates.hx: done ("
+                                  (number->string n-fetched) "/"
+                                  (number->string (length results))
+                                  " fetched)")))))
 
 ;; Kick off a parallel fetch for doc-id/deps and apply hints when done.
 (define (fetch-and-apply! doc-id deps)
