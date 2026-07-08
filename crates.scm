@@ -232,6 +232,14 @@
          deps))
   (map thread-join! threads))
 
+;; Char index of the newline (or end-of-string) at the end of line N (0-based).
+;; Mirrors oil.hx's line-end-char-index — safe, no rope API involved.
+(define (line-end-char lines n)
+  (let loop ([i 0] [pos 0])
+    (if (= i n)
+        (+ pos (string-length (list-ref lines i)))
+        (loop (+ i 1) (+ pos (string-length (list-ref lines i)) 1)))))
+
 ;; Apply fetched results as inlay hints on doc-id (called on main thread).
 (define (apply-hints! doc-id results)
   (with-handler
@@ -239,7 +247,9 @@
       (set-status! (string-append "crates.hx error: " (to-string err))))
     (define r (editor->text doc-id))
     (when r
-      (define n-lines (rope-len-lines r))
+      (define full-text (rope->string r))
+      (define text-lines (split-many full-text "\n"))
+      (define n-lines (length text-lines))
       (define n-fetched (length (filter (lambda (r) (cadddr r)) results)))
       (for-each
         (lambda (res)
@@ -250,10 +260,7 @@
             (define line   (caddr res))
             (define latest (cadddr res))
             (when (and latest (< line n-lines))
-              (define hint-pos
-                (if (< (+ line 1) n-lines)
-                    (- (rope-line->char r (+ line 1)) 1)
-                    (rope-line->char r line)))
+              (define hint-pos (line-end-char text-lines line))
               (define status (version-status req latest))
               (define text
                 (cond
@@ -262,11 +269,13 @@
                   [else                   (string-append " ? " latest)]))
               (define id (add-inlay-hint hint-pos text))
               (when id (set! *hint-ids* (cons id *hint-ids*))))))
-        results)
+        (sort results (lambda (a b) (< (caddr a) (caddr b)))))
       (set-status! (string-append "crates.hx: done ("
                                   (number->string n-fetched) "/"
                                   (number->string (length results))
-                                  " fetched)")))))
+                                  " fetched, "
+                                  (number->string (length *hint-ids*))
+                                  " hint-ids)")))))
 
 ;; Kick off a parallel fetch for doc-id/deps and apply hints when done.
 (define (fetch-and-apply! doc-id deps)
