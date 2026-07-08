@@ -2,6 +2,7 @@
 (require (prefix-in helix.static. "helix/static.scm"))
 (require "helix/editor.scm")
 (require "helix/misc.scm")
+(require "helix/ext.scm")
 (require-builtin helix/core/text)
 (require-builtin steel/process)
 
